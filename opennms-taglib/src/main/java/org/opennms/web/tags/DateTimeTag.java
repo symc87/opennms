@@ -42,6 +42,7 @@ import java.util.Date;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.servlet.jsp.PageContext;
 import javax.servlet.jsp.tagext.SimpleTagSupport;
 
 /**
@@ -58,6 +59,8 @@ import javax.servlet.jsp.tagext.SimpleTagSupport;
 public class DateTimeTag extends SimpleTagSupport {
 
     final static String SYSTEM_PROPERTY_DATE_FORMAT = "org.opennms.ui.datettimeformat";
+    public final static String SESSION_PROPERTY_TIMEZONE_ID = "org.opennms.ui.timezoneid";
+
 
     private final static Logger LOG = Logger.getLogger(DateTimeTag.class.getName());
 
@@ -71,8 +74,8 @@ public class DateTimeTag extends SimpleTagSupport {
             .optionalStart()
             .appendLiteral(':')
             .appendValue(SECOND_OF_MINUTE, 2)
-            .appendOffsetId().toFormatter()
-            .withZone(ZoneId.systemDefault());
+            .appendOffsetId().toFormatter();
+
 
     private Instant instant;
     private DateTimeFormatter formatter;
@@ -84,7 +87,7 @@ public class DateTimeTag extends SimpleTagSupport {
             this.formatter = DEFAULT_FORMATTER;
         } else {
             try {
-                this.formatter = DateTimeFormatter.ofPattern(format).withZone(ZoneId.systemDefault());
+                this.formatter = DateTimeFormatter.ofPattern(format);
             } catch (IllegalArgumentException e) {
                 LOG.log(Level.WARNING,
                         String.format("Can not use System Property %s=%s as dateformat, will fall back to default." +
@@ -99,7 +102,7 @@ public class DateTimeTag extends SimpleTagSupport {
 
     @Override
     public void doTag() throws IOException {
-        String output = this.formatter.format(instant);
+        String output = this.formatter.withZone(getZoneId()).format(instant);
         getJspContext().getOut().write(output);
     }
 
@@ -112,5 +115,13 @@ public class DateTimeTag extends SimpleTagSupport {
         if (date != null) {
             this.instant = date.toInstant();
         }
+    }
+
+    private ZoneId getZoneId(){
+        ZoneId timeZoneId = (ZoneId) this.getJspContext().getAttribute(SESSION_PROPERTY_TIMEZONE_ID, PageContext.SESSION_SCOPE);
+        if(timeZoneId == null){
+            timeZoneId = ZoneId.systemDefault();
+        }
+        return timeZoneId;
     }
 }

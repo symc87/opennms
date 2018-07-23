@@ -29,6 +29,8 @@
 package org.opennms.web.tags;
 
 import static org.junit.Assert.assertEquals;
+import static org.mockito.Matchers.anyInt;
+import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -37,6 +39,8 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 
 import javax.servlet.jsp.JspContext;
 import javax.servlet.jsp.JspWriter;
@@ -54,21 +58,35 @@ public class DateTimeTagTest {
 
     @Test
     public void shouldHonorSystemSettings() throws IOException {
-        String format = "yyy-MM-dd";
+        String format = "yyyy-MM-dd";
         System.setProperty(DateTimeTag.SYSTEM_PROPERTY_DATE_FORMAT, format);
         test(format);
         System.clearProperty(DateTimeTag.SYSTEM_PROPERTY_DATE_FORMAT);
     }
 
+    @Test
+    public void shouldHonorUserTimezone() throws IOException {
+        Map<String, Object> attributes = new HashMap<>();
+        // Martinique has no daylight savings => offset to UTC should be always the same
+        attributes.put(DateTimeTag.SESSION_PROPERTY_TIMEZONE_ID, ZoneId.of("America/Martinique"));
+        String result = test("yyyy-MM-dd'T'HH:mm:ssxxx", attributes);
+        assertEquals("-04:00", result.substring(result.length()-6));
+    }
+
     public void test(String expectedPattern) throws IOException {
+        test(expectedPattern, new HashMap<>());
+    }
+
+    public String test(String expectedPattern, Map<String, Object> attributes) throws IOException {
         Instant now = Instant.now();
-        String output = new DateTimeTagInvoker()
+        String output = new DateTimeTagInvoker(attributes)
                 .setInstant(now)
                 .invokeAndGet();
         DateTimeFormatter formatter = DateTimeFormatter
                 .ofPattern(expectedPattern)
                 .withZone(ZoneId.systemDefault());
         assertEquals(formatter.format(now), output);
+        return output;
     }
 
     // Helper class to be able to test easier
@@ -76,17 +94,29 @@ public class DateTimeTagTest {
 
         private DateTimeTag tag;
         private JspWriter jspWriter;
+        private Map<String, Object> attributes = new HashMap<>();
 
         private DateTimeTagInvoker() throws IOException {
+            this(new HashMap<String, Object>());
+        }
+
+        private DateTimeTagInvoker(Map<String, Object> attributes) throws IOException {
+            this.attributes = attributes;
             jspWriter = Mockito.mock(JspWriter.class);
             JspContext jspContext = Mockito.mock(JspContext.class);
             when(jspContext.getOut()).thenReturn(jspWriter);
+            when(jspContext.getAttribute(anyString(), anyInt()))
+                    .then(invocationOnMock -> this.getAttribute((String)invocationOnMock.getArguments()[0]));
             tag = new DateTimeTag(){
                 @Override
                 protected JspContext getJspContext() {
                     return jspContext;
                 }
             };
+        }
+
+        private Object getAttribute(String attributeName){
+            return this.attributes.get(attributeName);
         }
 
         DateTimeTagInvoker setDate(Date date){
